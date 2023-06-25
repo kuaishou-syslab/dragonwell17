@@ -171,6 +171,12 @@ public class WispTask implements Comparable<WispTask> {
         // thread status
         if (thread != null) { // calling from Thread.start()
             NATIVE_INTERRUPTED_UPDATER.lazySet(this, 1);
+            if (threadWrapper != null) {
+                // threadWrapper is not null only when the last wrapper is set by WispThreadWrapper
+                // so we need to clear it when the task is reused by Thread.start()
+                assert isThreadAsWisp == false;
+                setThreadWrapper(null);
+            }
             isThreadAsWisp = true;
             WispEngine.JLA.setWispTask(thread, this);
             setThreadWrapper(thread);
@@ -478,14 +484,13 @@ public class WispTask implements Comparable<WispTask> {
     }
 
     void setThreadWrapper(Thread thread) {
-        if (threadWrapper != thread) {
-            threadWrapper = thread;
-            if (threadWrapper != null) {
-                WispEngine.JLA.setWispTask(threadWrapper, this);
-            }
-            if (ctx != null) {
-                ctx.updateThreadObjectForWispThread(threadWrapper);
-            }
+        assert threadWrapper == null || thread == null;
+        threadWrapper = thread;
+        if (threadWrapper != null) {
+            WispEngine.JLA.setWispTask(threadWrapper, this);
+        }
+        if (ctx != null) {
+            ctx.updateThreadObjectForWispThread(threadWrapper);
         }
     }
 
