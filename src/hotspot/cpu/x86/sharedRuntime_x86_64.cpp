@@ -2259,7 +2259,7 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
 
   Label reguard;
   Label reguard_done;
-  __ cmpl(Address(r15_thread, JavaThread::stack_guard_state_offset()), StackOverflow::stack_guard_yellow_reserved_disabled);
+  __ cmpl(Address(r15_thread, JavaThread::stack_guard_state_offset()), static_cast<int32_t>(StackGuardState::stack_guard_yellow_reserved_disabled));
   __ jcc(Assembler::equal, reguard);
   __ bind(reguard_done);
 
@@ -2440,7 +2440,12 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
     __ movptr(Address(r15_thread, in_bytes(Thread::pending_exception_offset())), (int32_t)NULL_WORD);
 
     // args are (oop obj, BasicLock* lock, JavaThread* thread)
-    __ call(RuntimeAddress(CAST_FROM_FN_PTR(address, SharedRuntime::complete_monitor_unlocking_C)));
+    if (UseWispMonitor) {
+      __ call_VM(noreg, CAST_FROM_FN_PTR(address, SharedRuntime::complete_wisp_monitor_unlocking_C), c_rarg0, c_rarg1);
+    } else {
+      __ call(RuntimeAddress(CAST_FROM_FN_PTR(address, SharedRuntime::complete_monitor_unlocking_C)));
+    }
+
     __ mov(rsp, r12); // restore sp
     __ reinit_heapbase();
 #ifdef ASSERT
@@ -3514,7 +3519,7 @@ void NativeInvokerGenerator::generate() {
   __ block_comment("reguard stack check");
   Label L_reguard;
   Label L_after_reguard;
-  __ cmpl(Address(r15_thread, JavaThread::stack_guard_state_offset()), StackOverflow::stack_guard_yellow_reserved_disabled);
+  __ cmpl(Address(r15_thread, JavaThread::stack_guard_state_offset()), static_cast<int32_t>(StackGuardState::stack_guard_yellow_reserved_disabled));
   __ jcc(Assembler::equal, L_reguard);
   __ bind(L_after_reguard);
 
@@ -4097,9 +4102,22 @@ void create_switchTo_contents(MacroAssembler *masm, int start, OopMapSet* oop_ma
     __ movl(temp, Address(thread, JavaThread::java_call_counter_offset()));
     __ movl(Address(old_coroutine, Coroutine::java_call_counter_offset()), temp);
 
-    // store rsp into CorotineStack
+    // store CorotineStack.
+    // store rsp into CorotineStack.
     __ movptr(old_stack, Address(old_coroutine, Coroutine::stack_offset()));
     __ movptr(Address(old_stack, CoroutineStack::last_sp_offset()), rsp);
+    __ movl(temp, Address(thread, JavaThread::stack_guard_state_offset()));
+    __ movl(Address(old_stack, CoroutineStack::stack_guard_state_offset()), temp);
+    __ movptr(temp, Address(thread, JavaThread::stack_base_offset()));
+    __ movptr(Address(old_stack, CoroutineStack::stack_base_offset()), temp);
+    __ movptr(temp, Address(thread, JavaThread::stack_end_offset()));
+    __ movptr(Address(old_stack, CoroutineStack::stack_end_offset()), temp);
+    __ movptr(temp, Address(thread, JavaThread::stack_overflow_limit_offset()));
+    __ movptr(Address(old_stack, CoroutineStack::stack_overflow_limit_offset()), temp);
+    __ movptr(temp, Address(thread, JavaThread::reserved_stack_activation_offset()));
+    __ movptr(Address(old_stack, CoroutineStack::reserved_stack_activation_offset()), temp);
+    __ movl(temp, Address(thread, Thread::stack_size_offset()));
+    __ movl(Address(old_stack, CoroutineStack::stack_size_offset()), temp);
   }
   Register target_stack = r12;
   __ movptr(target_stack, Address(target_coroutine, Coroutine::stack_offset()));
@@ -4146,14 +4164,22 @@ void create_switchTo_contents(MacroAssembler *masm, int start, OopMapSet* oop_ma
       __ movl(Address(target_coroutine, Coroutine::java_call_counter_offset()), 0);
 #endif
 
-      // update the thread's stack base and size
+      // Update the thread's stack base and size
+      // JavaThread extends from Thread. Both of them have stack information.
+      // They should be updated correctly together.
+      __ movl(temp, Address(target_stack, CoroutineStack::stack_guard_state_offset()));
+      __ movl(Address(thread, JavaThread::stack_guard_state_offset()), temp);
       __ movptr(temp, Address(target_stack, CoroutineStack::stack_base_offset()));
+      __ movptr(Address(thread, Thread::stack_base_offset()), temp);
       __ movptr(Address(thread, JavaThread::stack_base_offset()), temp);
-      __ movl(temp2, Address(target_stack, CoroutineStack::stack_size_offset()));
-      __ movl(Address(thread, JavaThread::stack_size_offset()), temp2);
-
-      // update JavaThread::_reserved_stack_activation for @ReservedStackAccess support
+      __ movptr(temp, Address(target_stack, CoroutineStack::stack_end_offset()));
+      __ movptr(Address(thread, JavaThread::stack_end_offset()), temp);
+      __ movptr(temp, Address(target_stack, CoroutineStack::stack_overflow_limit_offset()));
+      __ movptr(Address(thread, JavaThread::stack_overflow_limit_offset()), temp);
+      __ movptr(temp, Address(target_stack, CoroutineStack::reserved_stack_activation_offset()));
       __ movptr(Address(thread, JavaThread::reserved_stack_activation_offset()), temp);
+      __ movl(temp, Address(target_stack, CoroutineStack::stack_size_offset()));
+      __ movl(Address(thread, Thread::stack_size_offset()), temp);
     }
 #if defined(_WINDOWS)
     {

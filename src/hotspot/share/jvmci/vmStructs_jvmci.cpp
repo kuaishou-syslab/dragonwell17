@@ -174,7 +174,7 @@
   nonstatic_field(JavaThread,                  _threadObj,                                    OopHandle)                             \
   nonstatic_field(JavaThread,                  _anchor,                                       JavaFrameAnchor)                       \
   nonstatic_field(JavaThread,                  _vm_result,                                    oop)                                   \
-  nonstatic_field(JavaThread,                  _stack_overflow_state._stack_overflow_limit,   address)                               \
+  nonstatic_field(JavaThread,                  _stack_overflow_state._stack_info.stack_overflow_limit,   address)                    \
   volatile_nonstatic_field(JavaThread,         _exception_oop,                                oop)                                   \
   volatile_nonstatic_field(JavaThread,         _exception_pc,                                 address)                               \
   volatile_nonstatic_field(JavaThread,         _is_method_handle_return,                      int)                                   \
@@ -190,7 +190,7 @@
   nonstatic_field(JavaThread,                  _should_post_on_exceptions_flag,               int)                                   \
   nonstatic_field(JavaThread,                  _jni_environment,                              JNIEnv)                                \
   nonstatic_field(JavaThread,                  _poll_data,                                    SafepointMechanism::ThreadData)        \
-  nonstatic_field(JavaThread,                  _stack_overflow_state._reserved_stack_activation, address)                            \
+  nonstatic_field(JavaThread,                  _stack_overflow_state._stack_info.reserved_stack_activation, address)                 \
   nonstatic_field(JavaThread,                  _current_coroutine,                            Coroutine*)                            \
   nonstatic_field(Coroutine,                   _wisp_thread,                                  WispThread*)                           \
   nonstatic_field(WispThread,                  _thread,                                       JavaThread*)                           \

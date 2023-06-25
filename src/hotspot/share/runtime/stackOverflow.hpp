@@ -30,6 +30,27 @@
 
 class JavaThread;
 
+// State of the stack guard pages for the containing thread.
+enum class StackGuardState : int {
+  stack_guard_unused,                   // not needed
+  stack_guard_reserved_disabled,        // only reserved is disabled
+  stack_guard_yellow_reserved_disabled, // disabled (temporarily) after stack overflow
+  stack_guard_enabled,                  // both reserved and yellow are enabled
+};
+
+struct StackOverflowInfo {
+  StackGuardState  stack_guard_state;
+
+  // Precompute the limit of the stack as used in stack overflow checks.
+  // We load it from here to simplify the stack overflow check in assembly.
+  address          stack_overflow_limit;
+  address          reserved_stack_activation;
+
+  // Support for stack overflow handling, copied down from thread.
+  address          stack_base;
+  address          stack_end;
+};
+
 // StackOverflow handling is encapsulated in this class.  This class contains state variables
 // for each JavaThread that are used to detect stack overflow though explicit checks or through
 // checks in the signal handler when stack banging into guard pages causes a trap.
@@ -38,43 +59,32 @@ class JavaThread;
 class StackOverflow {
   friend class JVMCIVMStructs;
   friend class JavaThread;
+  friend class CoroutineStack;
  public:
-  // State of the stack guard pages for the containing thread.
-  enum StackGuardState {
-    stack_guard_unused,         // not needed
-    stack_guard_reserved_disabled,
-    stack_guard_yellow_reserved_disabled,// disabled (temporarily) after stack overflow
-    stack_guard_enabled         // enabled
-  };
-
-  StackOverflow() :
-    _stack_guard_state(stack_guard_unused),
-    _stack_overflow_limit(nullptr),
-    _reserved_stack_activation(nullptr),  // stack base not known yet
-    _stack_base(nullptr), _stack_end(nullptr) {}
+  StackOverflow() {
+    memset(&_stack_info, 0, sizeof(StackOverflowInfo));
+  }
 
   // Initialization after thread is started.
   void initialize(address base, address end) {
-     _stack_base = base;
-     _stack_end = end;
+    // For JavaThread, Thread::record_stack_base_and_size() may be
+    // invoked twice. One is in JavaThread::run while the other is
+    // in thread_native_entry. Add a check here to avoid duplicated
+    // initialization.
+    if (_stack_info.stack_base != NULL) {
+      assert(_stack_info.stack_base == base, "Sanity check");
+      return;
+    }
+    _stack_info.stack_base = base;
+    _stack_info.stack_end = end;
     set_stack_overflow_limit();
     set_reserved_stack_activation(base);
   }
  private:
+  StackOverflowInfo _stack_info;
 
-  StackGuardState  _stack_guard_state;
-
-  // Precompute the limit of the stack as used in stack overflow checks.
-  // We load it from here to simplify the stack overflow check in assembly.
-  address          _stack_overflow_limit;
-  address          _reserved_stack_activation;
-
-  // Support for stack overflow handling, copied down from thread.
-  address          _stack_base;
-  address          _stack_end;
-
-  address stack_end()  const           { return _stack_end; }
-  address stack_base() const           { assert(_stack_base != nullptr, "Sanity check"); return _stack_base; }
+  address stack_end()  const           { return _stack_info.stack_end; }
+  address stack_base() const           { assert(_stack_info.stack_base != nullptr, "Sanity check"); return _stack_info.stack_base; }
 
   // Stack overflow support
   //
@@ -189,6 +199,10 @@ class StackOverflow {
     return _stack_shadow_zone_size;
   }
 
+  static void copy(StackOverflow* dest, StackOverflow* src) {
+    memcpy(&(dest->_stack_info), &(src->_stack_info), sizeof(StackOverflowInfo));
+  }
+
   void create_stack_guard_pages();
   void remove_stack_guard_pages();
 
@@ -199,16 +213,16 @@ class StackOverflow {
   void enable_stack_red_zone();
   void disable_stack_red_zone();
 
-  bool stack_guard_zone_unused() const { return _stack_guard_state == stack_guard_unused; }
+  bool stack_guard_zone_unused() const { return _stack_info.stack_guard_state == StackGuardState::stack_guard_unused; }
 
   bool stack_yellow_reserved_zone_disabled() const {
-    return _stack_guard_state == stack_guard_yellow_reserved_disabled;
+    return _stack_info.stack_guard_state == StackGuardState::stack_guard_yellow_reserved_disabled;
   }
 
   size_t stack_available(address cur_sp) const {
     // This code assumes java stacks grow down
     address low_addr; // Limit on the address for deepest stack depth
-    if (_stack_guard_state == stack_guard_unused) {
+    if (_stack_info.stack_guard_state == StackGuardState::stack_guard_unused) {
       low_addr = stack_end();
     } else {
       low_addr = stack_reserved_zone_base();
@@ -218,12 +232,18 @@ class StackOverflow {
 
   bool stack_guards_enabled() const;
 
-  address reserved_stack_activation() const { return _reserved_stack_activation; }
+  address reserved_stack_activation() const {
+    return _stack_info.reserved_stack_activation;
+  }
   void set_reserved_stack_activation(address addr) {
-    assert(_reserved_stack_activation == stack_base()
-            || _reserved_stack_activation == nullptr
+    assert(_stack_info.reserved_stack_activation == stack_base()
+            || _stack_info.reserved_stack_activation == nullptr
             || addr == stack_base(), "Must not be set twice");
-    _reserved_stack_activation = addr;
+    _stack_info.reserved_stack_activation = addr;
+  }
+
+  bool reserved_stack_activated() {
+    return _stack_info.reserved_stack_activation < stack_base();
   }
 
   // Attempt to reguard the stack after a stack overflow may have occurred.
@@ -239,8 +259,12 @@ class StackOverflow {
   bool reguard_stack_if_needed(void);
 
   void set_stack_overflow_limit() {
-    _stack_overflow_limit =
+    _stack_info.stack_overflow_limit =
       stack_end() + MAX2(stack_guard_zone_size(), stack_shadow_zone_size());
+  }
+
+  void set_stack_guard_state(StackGuardState state) {
+    _stack_info.stack_guard_state = state;
   }
 };
 

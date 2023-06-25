@@ -961,10 +961,10 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
   // reguard stack if StackOverflow exception happened while in native.
   {
     __ ldr_u32(Rtemp, Address(Rthread, JavaThread::stack_guard_state_offset()));
-    __ cmp_32(Rtemp, StackOverflow::stack_guard_yellow_reserved_disabled);
-  __ call(CAST_FROM_FN_PTR(address, SharedRuntime::reguard_yellow_pages), relocInfo::none, eq);
+    __ cmp_32(Rtemp, StackGuardState::stack_guard_yellow_reserved_disabled);
+    __ call(CAST_FROM_FN_PTR(address, SharedRuntime::reguard_yellow_pages), relocInfo::none, eq);
 #if R9_IS_SCRATCHED
-  __ restore_method();
+    __ restore_method();
 #endif
   }
 

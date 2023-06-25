@@ -1394,7 +1394,7 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
     Label no_reguard;
     __ lea(rscratch1, Address(rthread, in_bytes(JavaThread::stack_guard_state_offset())));
     __ ldrw(rscratch1, Address(rscratch1));
-    __ cmp(rscratch1, (u1)StackOverflow::stack_guard_yellow_reserved_disabled);
+    __ cmp(rscratch1, (u1)StackGuardState::stack_guard_yellow_reserved_disabled);
     __ br(Assembler::NE, no_reguard);
 
     __ push_call_clobbered_registers();

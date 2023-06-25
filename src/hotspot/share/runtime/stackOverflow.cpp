@@ -70,15 +70,16 @@ bool StackOverflow::stack_guards_enabled() const {
 #ifdef ASSERT
   if (os::uses_stack_guard_pages() &&
       !(DisablePrimordialThreadGuardPages && os::is_primordial_thread())) {
-    assert(_stack_guard_state != stack_guard_unused, "guard pages must be in use");
+    assert(_stack_info.stack_guard_state != StackGuardState::stack_guard_unused,
+	  "guard pages must be in use");
   }
 #endif
-  return _stack_guard_state == stack_guard_enabled;
+  return _stack_info.stack_guard_state == StackGuardState::stack_guard_enabled;
 }
 
 void StackOverflow::create_stack_guard_pages() {
   if (!os::uses_stack_guard_pages() ||
-      _stack_guard_state != stack_guard_unused ||
+      _stack_info.stack_guard_state != StackGuardState::stack_guard_unused ||
       (DisablePrimordialThreadGuardPages && os::is_primordial_thread())) {
       log_info(os, thread)("Stack guard page creation for thread "
                            UINTX_FORMAT " disabled", os::current_thread_id());
@@ -99,7 +100,7 @@ void StackOverflow::create_stack_guard_pages() {
   }
 
   if (os::guard_memory((char *) low_addr, len)) {
-    _stack_guard_state = stack_guard_enabled;
+    set_stack_guard_state(StackGuardState::stack_guard_enabled);
   } else {
     log_warning(os, thread)("Attempt to protect stack guard pages failed ("
       PTR_FORMAT "-" PTR_FORMAT ").", p2i(low_addr), p2i(low_addr + len));
@@ -112,22 +113,22 @@ void StackOverflow::create_stack_guard_pages() {
 }
 
 void StackOverflow::remove_stack_guard_pages() {
-  if (_stack_guard_state == stack_guard_unused) return;
+  if (_stack_info.stack_guard_state == StackGuardState::stack_guard_unused) return;
   address low_addr = stack_end();
   size_t len = stack_guard_zone_size();
 
   if (os::must_commit_stack_guard_pages()) {
     if (os::remove_stack_guard_pages((char *) low_addr, len)) {
-      _stack_guard_state = stack_guard_unused;
+      set_stack_guard_state(StackGuardState::stack_guard_unused);
     } else {
       log_warning(os, thread)("Attempt to deallocate stack guard pages failed ("
         PTR_FORMAT "-" PTR_FORMAT ").", p2i(low_addr), p2i(low_addr + len));
       return;
     }
   } else {
-    if (_stack_guard_state == stack_guard_unused) return;
+    if (_stack_info.stack_guard_state == StackGuardState::stack_guard_unused) return;
     if (os::unguard_memory((char *) low_addr, len)) {
-      _stack_guard_state = stack_guard_unused;
+      set_stack_guard_state(StackGuardState::stack_guard_unused);
     } else {
       log_warning(os, thread)("Attempt to unprotect stack guard pages failed ("
         PTR_FORMAT "-" PTR_FORMAT ").", p2i(low_addr), p2i(low_addr + len));
@@ -141,10 +142,13 @@ void StackOverflow::remove_stack_guard_pages() {
 }
 
 void StackOverflow::enable_stack_reserved_zone(bool check_if_disabled) {
-  if (check_if_disabled && _stack_guard_state == stack_guard_reserved_disabled) {
+  if (check_if_disabled &&
+    _stack_info.stack_guard_state == StackGuardState::stack_guard_reserved_disabled) {
     return;
   }
-  assert(_stack_guard_state == stack_guard_reserved_disabled, "inconsistent state");
+
+  assert(_stack_info.stack_guard_state ==
+    StackGuardState::stack_guard_reserved_disabled, "inconsistent state");
 
   // The base notation is from the stack's point of view, growing downward.
   // We need to adjust it to work correctly with guard_memory()
@@ -154,32 +158,36 @@ void StackOverflow::enable_stack_reserved_zone(bool check_if_disabled) {
   guarantee(base < os::current_stack_pointer(),"Error calculating stack reserved zone");
 
   if (os::guard_memory((char *) base, stack_reserved_zone_size())) {
-    _stack_guard_state = stack_guard_enabled;
+    set_stack_guard_state(StackGuardState::stack_guard_enabled);
   } else {
     warning("Attempt to guard stack reserved zone failed.");
   }
 }
 
 void StackOverflow::disable_stack_reserved_zone() {
-  assert(_stack_guard_state == stack_guard_enabled, "inconsistent state");
+  assert(_stack_info.stack_guard_state == StackGuardState::stack_guard_enabled,
+    "inconsistent state");
 
   // Simply return if called for a thread that does not use guard pages.
-  if (_stack_guard_state != stack_guard_enabled) return;
+  if (_stack_info.stack_guard_state != StackGuardState::stack_guard_enabled)
+    return;
 
   // The base notation is from the stack's point of view, growing downward.
   // We need to adjust it to work correctly with guard_memory()
   address base = stack_reserved_zone_base() - stack_reserved_zone_size();
 
   if (os::unguard_memory((char *)base, stack_reserved_zone_size())) {
-    _stack_guard_state = stack_guard_reserved_disabled;
+    set_stack_guard_state(StackGuardState::stack_guard_reserved_disabled);
   } else {
     warning("Attempt to unguard stack reserved zone failed.");
   }
 }
 
 void StackOverflow::enable_stack_yellow_reserved_zone() {
-  assert(_stack_guard_state != stack_guard_unused, "must be using guard pages.");
-  assert(_stack_guard_state != stack_guard_enabled, "already enabled");
+  assert(_stack_info.stack_guard_state != StackGuardState::stack_guard_unused,
+    "must be using guard pages");
+  assert(_stack_info.stack_guard_state != StackGuardState::stack_guard_enabled,
+    "already enabled");
 
   // The base notation is from the stacks point of view, growing downward.
   // We need to adjust it to work correctly with guard_memory()
@@ -187,27 +195,48 @@ void StackOverflow::enable_stack_yellow_reserved_zone() {
 
   guarantee(base < stack_base(), "Error calculating stack yellow zone");
   guarantee(base < os::current_stack_pointer(), "Error calculating stack yellow zone");
+  size_t guard_size = 0;
+  StackGuardState stack_guard_state;
+  if (reserved_stack_activated()) {
+    // Here we finish the yellow zone execpetion handle
+    // within reserved stack activation.
+    guard_size = stack_yellow_zone_size();
+    stack_guard_state = StackGuardState::stack_guard_reserved_disabled;
+  } else {
+    guard_size = stack_yellow_reserved_zone_size();
+    stack_guard_state = StackGuardState::stack_guard_enabled;
+  }
 
-  if (os::guard_memory((char *) base, stack_yellow_reserved_zone_size())) {
-    _stack_guard_state = stack_guard_enabled;
+  if (os::guard_memory((char *) base, guard_size)) {
+    set_stack_guard_state(stack_guard_state);
   } else {
     warning("Attempt to guard stack yellow zone failed.");
   }
 }
 
 void StackOverflow::disable_stack_yellow_reserved_zone() {
-  assert(_stack_guard_state != stack_guard_unused, "must be using guard pages.");
-  assert(_stack_guard_state != stack_guard_yellow_reserved_disabled, "already disabled");
+  assert(_stack_info.stack_guard_state != StackGuardState::stack_guard_unused,
+    "must be using guard pages.");
+  assert(_stack_info.stack_guard_state != StackGuardState::stack_guard_yellow_reserved_disabled,
+    "already disabled");
 
   // Simply return if called for a thread that does not use guard pages.
-  if (_stack_guard_state == stack_guard_unused) return;
+  if (_stack_info.stack_guard_state == StackGuardState::stack_guard_unused) return;
 
   // The base notation is from the stacks point of view, growing downward.
   // We need to adjust it to work correctly with guard_memory()
   address base = stack_red_zone_base();
+  size_t unguard_size = 0;
+  StackGuardState stack_guard_state;
+  if (reserved_stack_activated()) {
+    assert(_stack_info.stack_guard_state == StackGuardState::stack_guard_reserved_disabled, "sanity check");
+    unguard_size = stack_yellow_zone_size();
+  } else {
+    unguard_size = stack_yellow_reserved_zone_size();
+  }
 
-  if (os::unguard_memory((char *)base, stack_yellow_reserved_zone_size())) {
-    _stack_guard_state = stack_guard_yellow_reserved_disabled;
+  if (os::unguard_memory((char *)base, unguard_size)) {
+    set_stack_guard_state(StackGuardState::stack_guard_yellow_reserved_disabled);
   } else {
     warning("Attempt to unguard stack yellow zone failed.");
   }
@@ -216,7 +245,8 @@ void StackOverflow::disable_stack_yellow_reserved_zone() {
 void StackOverflow::enable_stack_red_zone() {
   // The base notation is from the stacks point of view, growing downward.
   // We need to adjust it to work correctly with guard_memory()
-  assert(_stack_guard_state != stack_guard_unused, "must be using guard pages.");
+  assert(_stack_info.stack_guard_state != StackGuardState::stack_guard_unused,
+    "must be using guard pages.");
   address base = stack_red_zone_base() - stack_red_zone_size();
 
   guarantee(base < stack_base(), "Error calculating stack red zone");
@@ -230,7 +260,8 @@ void StackOverflow::enable_stack_red_zone() {
 void StackOverflow::disable_stack_red_zone() {
   // The base notation is from the stacks point of view, growing downward.
   // We need to adjust it to work correctly with guard_memory()
-  assert(_stack_guard_state != stack_guard_unused, "must be using guard pages.");
+  assert(_stack_info.stack_guard_state != StackGuardState::stack_guard_unused,
+    "must be using guard pages.");
   address base = stack_red_zone_base() - stack_red_zone_size();
   if (!os::unguard_memory((char *)base, stack_red_zone_size())) {
     warning("Attempt to unguard stack red zone failed.");
@@ -238,8 +269,9 @@ void StackOverflow::disable_stack_red_zone() {
 }
 
 bool StackOverflow::reguard_stack(address cur_sp) {
-  if (_stack_guard_state != stack_guard_yellow_reserved_disabled
-      && _stack_guard_state != stack_guard_reserved_disabled) {
+  StackGuardState stack_guard_state = _stack_info.stack_guard_state;
+  if (stack_guard_state != StackGuardState::stack_guard_yellow_reserved_disabled
+      && stack_guard_state != StackGuardState::stack_guard_reserved_disabled) {
     return true; // Stack already guarded or guard pages not needed.
   }
 
@@ -250,12 +282,12 @@ bool StackOverflow::reguard_stack(address cur_sp) {
   // when it should.
   guarantee(cur_sp > stack_reserved_zone_base(),
             "not enough space to reguard - increase StackShadowPages");
-  if (_stack_guard_state == stack_guard_yellow_reserved_disabled) {
+  if (stack_guard_state == StackGuardState::stack_guard_yellow_reserved_disabled) {
     enable_stack_yellow_reserved_zone();
     if (reserved_stack_activation() != stack_base()) {
       set_reserved_stack_activation(stack_base());
     }
-  } else if (_stack_guard_state == stack_guard_reserved_disabled) {
+  } else if (stack_guard_state == StackGuardState::stack_guard_reserved_disabled) {
     set_reserved_stack_activation(stack_base());
     enable_stack_reserved_zone();
   }

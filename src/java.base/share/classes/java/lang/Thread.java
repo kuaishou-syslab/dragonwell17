@@ -34,6 +34,8 @@ import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -179,10 +181,20 @@ public class Thread implements Runnable {
     @SuppressWarnings("removal")
     private AccessControlContext inheritedAccessControlContext;
 
-    /* For autonumbering anonymous threads. */
-    private static int threadInitNumber;
-    private static synchronized int nextThreadNum() {
-        return threadInitNumber++;
+    /* For autonumbering anonymous threads. It is modified from
+     * int to AtomicInteger since java 17's wisp coroutine support is added.
+     * In old design, THREAD_INIT_NUM is int and maintained by synchronized
+     * block. Thread constructor always runs this synchronized block.
+     * But thread constructor is often used in wisp coroutine switch code path.
+     * The synchronized block within coroutine switch code path is not safe.
+     * It may introduce antother unintended coroutine switch. So we use
+     * AtomicInteger instead of int to avoid the monitor sync and the
+     * unintended coroutine switch. In general, all the java code path within
+     * coroutine switch should be lock-free.
+     */
+    private static final AtomicInteger THREAD_INIT_NUM = new AtomicInteger(0);
+    private static int nextThreadNum() {
+        return THREAD_INIT_NUM.getAndIncrement();
     }
 
     /* ThreadLocal values pertaining to this thread. This map is maintained
@@ -212,11 +224,12 @@ public class Thread implements Runnable {
      */
     private final long tid;
 
-    /* For generating thread ID */
-    private static long threadSeqNumber;
-
-    private static synchronized long nextThreadID() {
-        return ++threadSeqNumber;
+    /* For generating thread ID. More design consideration please refer to
+     * THREAD_INIT_NUM.
+     */
+    private static AtomicLong THREAD_SEQ_NUM = new AtomicLong(0);
+    private static long nextThreadID() {
+        return THREAD_SEQ_NUM.incrementAndGet();
     }
 
     /*

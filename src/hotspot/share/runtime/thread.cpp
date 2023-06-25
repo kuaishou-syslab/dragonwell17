@@ -351,7 +351,8 @@ void Thread::record_stack_base_and_size() {
 
   // Set stack limits after thread is initialized.
   if (is_Java_thread()) {
-    as_Java_thread()->stack_overflow_state()->initialize(stack_base(), stack_end());
+    StackOverflow* stack_overflow_state = as_Java_thread()->stack_overflow_state();
+    stack_overflow_state->initialize(stack_base(), stack_end());
   }
 }
 
@@ -832,7 +833,11 @@ oop  JavaThread::threadObj() const    {
 
 void JavaThread::set_threadObj(oop p) {
   assert(_thread_oop_storage != NULL, "not yet initialized");
-  _threadObj = OopHandle(_thread_oop_storage, p);
+  if (UseWispMonitor && NULL == p) {
+    _threadObj = OopHandle();
+  } else {
+    _threadObj = OopHandle(_thread_oop_storage, p);
+  }
 }
 
 OopStorage* JavaThread::thread_oop_storage() {
@@ -1034,7 +1039,6 @@ void JavaThread::check_for_valid_safepoint_state() {
 
 JavaThread::JavaThread() :
   // Initialize fields
-
   _in_asgct(false),
   _on_thread_list(false),
   _entry_point(nullptr),
@@ -1084,6 +1088,7 @@ JavaThread::JavaThread() :
   _jvmci_reserved_oop0(nullptr),
 #endif // INCLUDE_JVMCI
 
+  _stack_overflow_state(),
   _exception_oop(oop()),
   _exception_pc(0),
   _exception_handler_pc(0),
@@ -2784,6 +2789,15 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
     create_vm_init_libraries();
   }
 
+#ifdef ASSERT
+  InstanceKlass *k = vmClasses::UnsafeConstants_klass();
+  assert(k->is_not_initialized(), "UnsafeConstants should not already be initialized");
+#endif
+
+  // initialize the hardware-specific constants needed by Unsafe
+  initialize_class(vmSymbols::jdk_internal_misc_UnsafeConstants(), CHECK);
+  jdk_internal_misc_UnsafeConstants::set_unsafe_constants();
+
   initialize_class(vmSymbols::java_lang_String(), CHECK);
 
   // Inject CompactStrings value after the static initializers for String ran.
@@ -2801,15 +2815,6 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
 
   // The VM creates objects of this class.
   initialize_class(vmSymbols::java_lang_Module(), CHECK);
-
-#ifdef ASSERT
-  InstanceKlass *k = vmClasses::UnsafeConstants_klass();
-  assert(k->is_not_initialized(), "UnsafeConstants should not already be initialized");
-#endif
-
-  // initialize the hardware-specific constants needed by Unsafe
-  initialize_class(vmSymbols::jdk_internal_misc_UnsafeConstants(), CHECK);
-  jdk_internal_misc_UnsafeConstants::set_unsafe_constants();
 
   // The VM preresolves methods to these classes. Make sure that they get initialized
   initialize_class(vmSymbols::java_lang_reflect_Method(), CHECK);

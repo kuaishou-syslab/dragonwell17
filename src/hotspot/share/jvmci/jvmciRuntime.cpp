@@ -402,6 +402,13 @@ JRT_LEAF(void, JVMCIRuntime::monitorexit(JavaThread* current, oopDesc* obj, Basi
   SharedRuntime::monitor_exit_helper(obj, lock, current);
 JRT_END
 
+JRT_ENTRY_NO_ASYNC(void, JVMCIRuntime::monitorexit_wisp(JavaThread* current, oopDesc* obj, BasicLock* lock))
+  assert(current->last_Java_sp(), "last_Java_sp must be set");
+  assert(oopDesc::is_oop(obj), "invalid lock object pointer dected");
+  Handle h_obj(current, obj);
+  SharedRuntime::monitor_exit_helper(h_obj, lock, current);
+JRT_END
+
 // Object.notify() fast path, caller does slow path
 JRT_LEAF(jboolean, JVMCIRuntime::object_notify(JavaThread* current, oopDesc* obj))
 

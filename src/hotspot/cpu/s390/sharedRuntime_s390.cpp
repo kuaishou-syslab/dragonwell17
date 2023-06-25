@@ -2055,8 +2055,8 @@ nmethod *SharedRuntime::generate_native_wrapper(MacroAssembler *masm,
 
   Label no_reguard;
 
-  __ z_cli(Address(Z_thread, JavaThread::stack_guard_state_offset() + in_ByteSize(sizeof(StackOverflow::StackGuardState) - 1)),
-           StackOverflow::stack_guard_yellow_reserved_disabled);
+  __ z_cli(Address(Z_thread, JavaThread::stack_guard_state_offset() + in_ByteSize(sizeof(StackGuardState) - 1)),
+           static_cast<int64_t>(StackGuardState::stack_guard_yellow_reserved_disabled));
 
   __ z_bre(no_reguard);
 

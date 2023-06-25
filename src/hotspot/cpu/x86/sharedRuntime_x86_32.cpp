@@ -1973,7 +1973,7 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
 
   Label reguard;
   Label reguard_done;
-  __ cmpl(Address(thread, JavaThread::stack_guard_state_offset()), StackOverflow::stack_guard_yellow_reserved_disabled);
+  __ cmpl(Address(thread, JavaThread::stack_guard_state_offset()), StackGuardState::stack_guard_yellow_reserved_disabled);
   __ jcc(Assembler::equal, reguard);
 
   // slow path reguard  re-enters here
@@ -2138,13 +2138,17 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
     // should be a peal
     // +wordSize because of the push above
     // args are (oop obj, BasicLock* lock, JavaThread* thread)
-    __ push(thread);
     __ lea(rax, Address(rbp, lock_slot_rbp_offset));
-    __ push(rax);
+    if (UseWispMonitor) {
+      __ call_VM(noreg, CAST_FROM_FN_PTR(address, SharedRuntime::complete_wisp_monitor_unlocking_C), obj_reg, rax);
+    } else {
+      __ push(thread);
+      __ push(rax);
+      __ push(obj_reg);
+      __ call(RuntimeAddress(CAST_FROM_FN_PTR(address, SharedRuntime::complete_monitor_unlocking_C)));
+      __ addptr(rsp, 3*wordSize);
+    }
 
-    __ push(obj_reg);
-    __ call(RuntimeAddress(CAST_FROM_FN_PTR(address, SharedRuntime::complete_monitor_unlocking_C)));
-    __ addptr(rsp, 3*wordSize);
 #ifdef ASSERT
     {
       Label L;

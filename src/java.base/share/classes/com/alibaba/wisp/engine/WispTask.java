@@ -182,13 +182,13 @@ public class WispTask implements Comparable<WispTask> {
             NATIVE_INTERRUPTED_UPDATER.lazySet(this, 1);
             isThreadAsWisp = true;
             WispEngine.JLA.setWispTask(thread, this);
-            threadWrapper = thread;
+            setThreadWrapper(thread);
         } else {
             // for WispThreadWrapper, skip native interrupt check
             NATIVE_INTERRUPTED_UPDATER.lazySet(this, 0);
             isThreadAsWisp = false;
             if (threadWrapper == null) {
-                threadWrapper = new WispThreadWrapper(this);
+                setThreadWrapper(new WispThreadWrapper(this));
             }
             WispEngine.JLA.setWispAlive(threadWrapper, true);
         }
@@ -201,7 +201,7 @@ public class WispTask implements Comparable<WispTask> {
 
     void cleanup() {
         engine = null;
-        threadWrapper = null;
+        setThreadWrapper(null);
         ctxClassLoader = null;
     }
 
@@ -228,7 +228,7 @@ public class WispTask implements Comparable<WispTask> {
                         WispEngine.JLA.setWispAlive(threadWrapper, false);
                         if (isThreadAsWisp) {
                             ThreadAsWisp.exit(threadWrapper);
-                            threadWrapper = null; // else WispThreadWrapper could be reused
+                            setThreadWrapper(null); // else WispThreadWrapper could be reused
                         }
                         if (throwable instanceof CoroutineExitException) {
                             throw (CoroutineExitException) throwable;
@@ -501,8 +501,15 @@ public class WispTask implements Comparable<WispTask> {
     }
 
     void setThreadWrapper(Thread thread) {
-        threadWrapper = thread;
-        WispEngine.JLA.setWispTask(thread, this);
+        if (threadWrapper != thread) {
+            threadWrapper = thread;
+            if (threadWrapper != null) {
+                WispEngine.JLA.setWispTask(threadWrapper, this);
+            }
+            if (ctx != null) {
+                ctx.updateThreadObjectForWispThread(threadWrapper);
+            }
+        }
     }
 
     @Override
