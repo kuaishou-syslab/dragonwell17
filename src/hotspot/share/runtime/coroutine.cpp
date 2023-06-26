@@ -182,8 +182,6 @@ Coroutine* Coroutine::create_coroutine(JavaThread* thread, CoroutineStack* stack
 }
 
 Coroutine::~Coroutine() {
-  assert(CoroutineSupportLocker::is_locked_by(_thread, Thread::current()),
-    "sanity check");
   remove_from_list(_thread->coroutine_list());
   if (_wisp_thread != NULL) {
     delete _wisp_thread;

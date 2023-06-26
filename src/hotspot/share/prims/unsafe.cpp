@@ -896,6 +896,7 @@ JVM_ENTRY(void, CoroutineSupport_switchToAndTerminate(JNIEnv* env, jclass klass,
   oop old_oop = JNIHandles::resolve(old_coroutine);
   Coroutine* coro = (Coroutine*)java_dyn_CoroutineBase::native_coroutine(old_oop);
   assert(coro != NULL, "NULL old coroutine in switchToAndTerminate");
+  assert(CoroutineSupportLocker::is_locked_by(coro->thread(), Thread::current()), "sanity check");
 
   java_dyn_CoroutineBase::set_native_coroutine(old_oop, 0);
 
