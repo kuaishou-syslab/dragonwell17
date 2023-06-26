@@ -4748,7 +4748,7 @@ void java_dyn_CoroutineBase::compute_offsets() {
 }
 
 #if INCLUDE_CDS
-void java_dyn_CoroutineBase::serialize(SerializeClosure* f) {
+void java_dyn_CoroutineBase::serialize_offsets(SerializeClosure* f) {
   COROUTINEBASE_FIELDS_DO(FIELD_SERIALIZE_OFFSET);
 }
 #endif
@@ -4773,7 +4773,7 @@ void com_alibaba_wisp_engine_WispCarrier::compute_offsets() {
 }
 
 #if INCLUDE_CDS
-void com_alibaba_wisp_engine_WispCarrier::serialize(SerializeClosure* f) {
+void com_alibaba_wisp_engine_WispCarrier::serialize_offsets(SerializeClosure* f) {
   WISPENGINE_FIELDS_DO(FIELD_SERIALIZE_OFFSET);
 }
 #endif
@@ -4810,7 +4810,7 @@ void com_alibaba_wisp_engine_WispTask::compute_offsets() {
 }
 
 #if INCLUDE_CDS
-void com_alibaba_wisp_engine_WispTask::serialize(SerializeClosure* f) {
+void com_alibaba_wisp_engine_WispTask::serialize_offsets(SerializeClosure* f) {
   WISPTASK_FIELDS_DO(FIELD_SERIALIZE_OFFSET);
 }
 #endif
@@ -5194,11 +5194,7 @@ void java_lang_InternalError::serialize_offsets(SerializeClosure* f) {
 
 // Compute field offsets of all the classes in this file
 void JavaClasses::compute_offsets() {
-  if (EnableCoroutine) {
-    java_dyn_CoroutineBase::compute_offsets();
-    com_alibaba_wisp_engine_WispCarrier::compute_offsets();
-    com_alibaba_wisp_engine_WispTask::compute_offsets();
-  }
+  BASIC_JAVA_CLASSES_DO_PART_COROUTINE(DO_COMPUTE_OFFSETS);
 
   if (UseSharedSpaces) {
     JVMTI_ONLY(assert(JvmtiExport::is_early_phase() && !(JvmtiExport::should_post_class_file_load_hook() &&
@@ -5222,6 +5218,7 @@ void JavaClasses::compute_offsets() {
 
 void JavaClasses::serialize_offsets(SerializeClosure* soc) {
   BASIC_JAVA_CLASSES_DO(DO_SERIALIZE_OFFSETS);
+  BASIC_JAVA_CLASSES_DO_PART_COROUTINE(DO_SERIALIZE_OFFSETS);
 }
 #endif
 
