@@ -1103,10 +1103,10 @@ JavaThread::JavaThread() :
   _frames_to_pop_failed_realloc(0),
 
   // coroutine support
+  _coroutine_list_lock(0),
   _coroutine_list(nullptr),
   _current_coroutine(nullptr),
   _wisp_preempted(false),
-  _coroutine_temp(0),
 
   _handshake(this),
 
@@ -2084,6 +2084,7 @@ void JavaThread::oops_do_no_frames(OopClosure* f, CodeBlobClosure* cf) {
   }
 
   if (EnableCoroutine) {
+    CoroutineListDoMark cldm(this);
     Coroutine* current = _coroutine_list;
     do {
       current->oops_do(f, cf);
@@ -2148,6 +2149,7 @@ void JavaThread::nmethods_do(CodeBlobClosure* cf) {
   }
 
   if (EnableCoroutine) {
+    CoroutineListDoMark cldm(this);
     Coroutine* current = _coroutine_list;
     do {
       current->nmethods_do(cf);
@@ -2160,6 +2162,7 @@ void JavaThread::nmethods_do(CodeBlobClosure* cf) {
   }
 
   if (EnableCoroutine) {
+    CoroutineListDoMark cldm(this);
     Coroutine* current = _coroutine_list;
     do {
       current->compiledMethods_do(cf);
@@ -2186,6 +2189,7 @@ void JavaThread::metadata_do(MetadataClosure* f) {
     }
   }
   if (EnableCoroutine) {
+    CoroutineListDoMark cldm(this);
     Coroutine* current = _coroutine_list;
     do {
       current->metadata_do(f);
@@ -2289,6 +2293,7 @@ void JavaThread::frames_do(void f(frame*, const RegisterMap* map)) {
     f(fr, fst.register_map());
   }
   if (EnableCoroutine) {
+    CoroutineListDoMark cldm(this);
     // traverse the coroutine stack frames
     Coroutine* current = _coroutine_list;
     do {
@@ -3862,6 +3867,7 @@ JavaThread *Threads::owning_thread_from_monitor_owner(ThreadsList * t_list,
     // first, see if owner is the address of a Java thread
     if (UseWispMonitor) {
       if (p->coroutine_list()) {
+        CoroutineListDoMark cldm(p);
         Coroutine* c = p->coroutine_list();
         do {
           if ((address) c->wisp_thread() == owner) {
@@ -3888,6 +3894,7 @@ JavaThread *Threads::owning_thread_from_monitor_owner(ThreadsList * t_list,
   DO_JAVA_THREADS(t_list, q) {
     if (UseWispMonitor) {
       if (q->coroutine_list()) {
+        CoroutineListDoMark cldm(q);
         Coroutine* c = q->coroutine_list();
         do {
           if (c->wisp_thread()->is_lock_owned(owner)) {
@@ -3961,6 +3968,7 @@ void Threads::print_on(outputStream* st, bool print_stacks,
             p->current_coroutine()->print_stack_header_on(st);
             st->print("\n");
           }
+          CoroutineListDoMark cldm(p);
           Coroutine* c = p->coroutine_list();
           do {
             c->print_stack_on(st);
@@ -4150,6 +4158,7 @@ void Threads::verify() {
 
 void JavaThread::initialize_coroutine_support() {
   assert(EnableCoroutine, "EnableCoroutine isn't enable");
+  // Here we create thread coroutine, there won't be stealed by other, so don't need to add coroutine_list_lock
   Coroutine::create_thread_coroutine(this, CoroutineStack::create_thread_stack(this))->insert_into_list(_coroutine_list);
 }
 

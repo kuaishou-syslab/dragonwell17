@@ -490,6 +490,39 @@ public:
   ~EnableStealMark();
 };
 
+class CoroutineListDoMark : public StackObj {
+private:
+  volatile int* _lock1;
+  volatile int* _lock2;
+
+public:
+  CoroutineListDoMark(JavaThread* th1, JavaThread* th2) {
+    assert(th1 != NULL && th2 != NULL, "sanity check");
+    _lock1 = th1->coroutine_list_lock();
+    _lock2 = th2->coroutine_list_lock();
+    // prevent deadlock
+    if (th1->osthread()->thread_id() < th2->osthread()->thread_id()) {
+      swap(_lock1, _lock2);
+    }
+    Thread::SpinAcquire(_lock1, "coroutine_list 1 - update");
+    Thread::SpinAcquire(_lock2, "coroutine_list 2 - update");
+  }
+
+  CoroutineListDoMark(JavaThread* th) {
+    assert(th != NULL, "sanity check");
+    _lock1 = th->coroutine_list_lock();
+    Thread::SpinAcquire(_lock1, "coroutine_list - update");
+    _lock2 = NULL;
+  }
+
+  ~CoroutineListDoMark() {
+    if (_lock2 != NULL) {
+      Thread::SpinRelease(_lock2);
+    }
+    Thread::SpinRelease(_lock1);
+  }
+};
+
 struct WispStealCandidate {
 private:
   Symbol *_holder;

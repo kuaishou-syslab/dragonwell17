@@ -927,7 +927,11 @@ JVM_ENTRY(jlong, CoroutineSupport_createCoroutine(JNIEnv* env, jclass klass, job
   if (coro == NULL) {
     THROW_0(vmSymbols::java_lang_OutOfMemoryError());
   }
-  coro->insert_into_list(thread->coroutine_list());
+
+  {
+    CoroutineListDoMark cldm(thread);
+    coro->insert_into_list(thread->coroutine_list());
+  }
   return (jlong)coro;
 JVM_END
 
@@ -969,6 +973,7 @@ JVM_ENTRY (void, CoroutineSupport_moveCoroutine(JNIEnv* env, jclass klass, jlong
   assert(EnableCoroutine, "pre-condition");
   Coroutine* coro = (Coroutine*)coroPtr;
   Coroutine* target = (Coroutine*)targetPtr;
+  CoroutineListDoMark cldm(coro->thread());
   Coroutine::move(coro, target);
 JVM_END
 
@@ -994,6 +999,8 @@ JVM_ENTRY(jboolean, CoroutineSupport_stealCoroutine(JNIEnv* env, jclass klass, j
   }
   assert(coro->thread() != thread, "steal from self");
   assert(coro->state() != Coroutine::_current, "running");
+
+  CoroutineListDoMark cldm(coro->thread(), thread);
   coro->remove_from_list(coro->thread()->coroutine_list());
   coro->insert_into_list(thread->coroutine_list());
   // change thread logic
