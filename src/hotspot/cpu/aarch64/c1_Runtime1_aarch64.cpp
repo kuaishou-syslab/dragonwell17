@@ -970,6 +970,11 @@ OopMapSet* Runtime1::generate_code_for(StubID id, StubAssembler* sasm) {
         oop_maps = new OopMapSet();
         oop_maps->add_gc_map(call_offset, map);
         restore_live_registers(sasm, save_fpu_registers);
+
+        if (EnableCoroutine) {
+          // rthread has been forcibly restored in restore_live_registers so we need to fix it.
+          WISP_COMPILER_RESTORE_FORCE_UPDATE;
+        }
       }
       break;
 
@@ -1020,11 +1025,6 @@ OopMapSet* Runtime1::generate_code_for(StubID id, StubAssembler* sasm) {
         oop_maps = new OopMapSet();
         oop_maps->add_gc_map(call_offset, map);
         restore_live_registers(sasm, save_fpu_registers);
-
-        if (EnableCoroutine) {
-          // rthread has been forcibly restored in restore_live_registers so we need to fix it.
-          WISP_COMPILER_RESTORE_FORCE_UPDATE;
-        }
       }
       break;
 

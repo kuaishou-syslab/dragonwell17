@@ -188,10 +188,9 @@ Coroutine* Coroutine::create_coroutine(JavaThread* thread, CoroutineStack* stack
 }
 
 Coroutine::~Coroutine() {
-  {
-    CoroutineListDoMark cldm(_thread);
-    remove_from_list(_thread->coroutine_list());
-  }
+  assert(CoroutineSupportLocker::is_locked_by(_thread, Thread::current()),
+    "sanity check");
+  remove_from_list(_thread->coroutine_list());
   if (_wisp_thread != NULL) {
     delete _wisp_thread;
   }
@@ -1295,12 +1294,16 @@ void Coroutine::initialize_coroutine_support(JavaThread* thread) {
   HandleMark hm(thread);
   Handle obj(thread, thread->threadObj());
   JavaValue result(T_VOID);
+  JavaCallArguments args;
+  args.set_receiver(obj);
+  args.push_long((jlong)thread->osthread()->thread_id());
+  args.push_long((jlong)thread->coroutine_support_lock());
 
   JavaCalls::call_virtual(&result,
-      obj,
       vmClasses::Thread_klass(),
       vmSymbols::initializeCoroutineSupport_method_name(),
-      vmSymbols::void_method_signature(),
+      vmSymbols::long_long_void_signature(),
+      &args,
       thread);
 }
 

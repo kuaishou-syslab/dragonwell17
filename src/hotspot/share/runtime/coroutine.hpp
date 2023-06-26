@@ -504,36 +504,37 @@ public:
   ~EnableStealMark();
 };
 
-class CoroutineListDoMark : public StackObj {
+// Spin lock for cocurrent coroutine support.
+// It is useless at safepoint.
+class CoroutineSupportLocker : public StackObj {
 private:
-  volatile int* _lock1;
-  volatile int* _lock2;
+  volatile long* _lock;
+  bool           _needs_locking;
 
 public:
-  CoroutineListDoMark(JavaThread* th1, JavaThread* th2) {
-    assert(th1 != NULL && th2 != NULL, "sanity check");
-    _lock1 = th1->coroutine_list_lock();
-    _lock2 = th2->coroutine_list_lock();
-    // prevent deadlock
-    if (th1->osthread()->thread_id() < th2->osthread()->thread_id()) {
-      swap(_lock1, _lock2);
+  CoroutineSupportLocker(JavaThread* carrier) {
+    assert(carrier != NULL, "sanity check");
+    Thread* current = Thread::current();
+    jlong tid = (jlong)current->osthread()->thread_id();
+    assert(tid != 0, "sanity check");
+    jlong lock_owner = (jlong) carrier->coroutine_support_lock_owner();
+    _needs_locking = !SafepointSynchronize::is_at_safepoint() && (tid != lock_owner);
+
+    if (_needs_locking) {
+      _lock = carrier->coroutine_support_lock();
+      Thread::SpinAcquireLongValue(_lock, "couroutine_support_lock", tid);
     }
-    Thread::SpinAcquire(_lock1, "coroutine_list 1 - update");
-    Thread::SpinAcquire(_lock2, "coroutine_list 2 - update");
   }
 
-  CoroutineListDoMark(JavaThread* th) {
-    assert(th != NULL, "sanity check");
-    _lock1 = th->coroutine_list_lock();
-    Thread::SpinAcquire(_lock1, "coroutine_list - update");
-    _lock2 = NULL;
+  ~CoroutineSupportLocker() {
+    if (_needs_locking) {
+      Thread::SpinReleaseLong(_lock);
+    }
   }
 
-  ~CoroutineListDoMark() {
-    if (_lock2 != NULL) {
-      Thread::SpinRelease(_lock2);
-    }
-    Thread::SpinRelease(_lock1);
+  static bool is_locked_by(JavaThread* carrier, Thread* lock_owner) {
+    return (jlong) carrier->coroutine_support_lock_owner() ==
+      (jlong) lock_owner->osthread()->thread_id();
   }
 };
 
