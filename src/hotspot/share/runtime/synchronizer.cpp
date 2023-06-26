@@ -1849,7 +1849,7 @@ void ObjectSynchronizer::log_in_use_monitor_details(outputStream* out) {
 }
 
 void SystemDictObjMonitor::lock(BasicLock* lock, Thread* current) {
-  assert(UseWispMonitor, "SystemDictObjMonitor if only for UseWispMonitor");
+  assert(UseWispMonitor, "SystemDictObjMonitor is only for UseWispMonitor");
   if (!current->is_Java_thread()) {
     _monitor->lock();
     return;
@@ -1871,7 +1871,7 @@ void SystemDictObjMonitor::lock(BasicLock* lock, Thread* current) {
 }
 
 void SystemDictObjMonitor::unlock(BasicLock* lock, Thread* current) {
-  assert(UseWispMonitor, "SystemDictObjMonitor if only for UseWispMonitor");
+  assert(UseWispMonitor, "SystemDictObjMonitor is only for UseWispMonitor");
   if (!current->is_Java_thread()) {
     _monitor->unlock();
     return;
@@ -1886,7 +1886,7 @@ void SystemDictObjMonitor::unlock(BasicLock* lock, Thread* current) {
 }
 
 void SystemDictObjMonitor::wait(BasicLock* lock, Thread* current) {
-  assert(UseWispMonitor, "SystemDictObjMonitor if only for UseWispMonitor");
+  assert(UseWispMonitor, "SystemDictObjMonitor is only for UseWispMonitor");
   if (!current->is_Java_thread()) {
     _monitor->wait();
     return;
@@ -1900,12 +1900,14 @@ void SystemDictObjMonitor::wait(BasicLock* lock, Thread* current) {
       ObjectSynchronizer::enter(Handle(jt, _obj.resolve()), lock, jt);
     }
   } else {
-    ObjectSynchronizer::wait(Handle(jt, _obj.resolve()), 0, jt);
+    // The purpose of using wait_uninterruptibly is to keep
+    // the behavior consistent with Monitor::wait
+    ObjectSynchronizer::wait_uninterruptibly(Handle(jt, _obj.resolve()), jt);
   }
 }
 
 void SystemDictObjMonitor::notify_all(Thread* current) {
-  assert(UseWispMonitor, "SystemDictObjMonitor if only for UseWispMonitor");
+  assert(UseWispMonitor, "SystemDictObjMonitor is only for UseWispMonitor");
   if (!current->is_Java_thread()) {
     _monitor->notify_all();
     return;
