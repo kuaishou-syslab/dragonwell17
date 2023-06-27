@@ -592,11 +592,9 @@ class SocketChannelImpl
             try {
                 beginWrite(blocking);
                 if (blocking) {
-                    n = Net.sendOOB(fd, b);
-                    while (n == IOStatus.INTERRUPTED && isOpen()) {
-                        park(Net.POLLOUT);
+                    do {
                         n = Net.sendOOB(fd, b);
-                    }
+                    } while (n == IOStatus.INTERRUPTED && isOpen());
                 } else {
                     n = Net.sendOOB(fd, b);
                 }

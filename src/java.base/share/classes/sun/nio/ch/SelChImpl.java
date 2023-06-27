@@ -96,7 +96,9 @@ public interface SelChImpl extends Channel {
         } else {
             millis = NANOSECONDS.toMillis(nanos);
         }
-        if (WispEngine.transparentWispSwitch() && !(this instanceof DatagramChannelImpl)) {
+        if (WispEngine.transparentWispSwitch()) {
+            // Not supported yet?
+            assert !(this instanceof DatagramChannelImpl);
             WEA.poll((SelectableChannel)this, event, millis);
         } else {
             Net.poll(getFD(), event, millis);
