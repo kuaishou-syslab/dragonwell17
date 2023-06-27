@@ -248,7 +248,7 @@ public class VM {
 
         //Set the enableCoroutine flag, This value is controlled
         //by the vm option -XX:+EnableCoroutine
-        enableCoroutine = Boolean.valueOf(props.remove("com.alibaba.coroutine.enableCoroutine"));
+        enableCoroutine = Boolean.valueOf(props.get("com.alibaba.coroutine.enableCoroutine"));
 
         // Set the maximum amount of direct memory.  This value is controlled
         // by the vm option -XX:MaxDirectMemorySize=<size>.

@@ -25,8 +25,6 @@
 
 package jdk.internal.access;
 
-import com.alibaba.wisp.engine.WispEngine;
-
 import javax.crypto.SealedObject;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.ObjectInputFilter;

@@ -55,7 +55,6 @@ import static java.net.StandardProtocolFamily.INET;
 import static java.net.StandardProtocolFamily.INET6;
 import static java.net.StandardProtocolFamily.UNIX;
 
-import com.alibaba.wisp.engine.WispEngine;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.access.WispEngineAccess;
 import sun.net.NetHooks;
