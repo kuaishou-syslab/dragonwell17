@@ -409,7 +409,7 @@ CoroutineStack* CoroutineStack::create_stack(JavaThread* thread, intptr_t size/*
   CoroutineStack* stack = new CoroutineStack(reserved_size);
   if (stack == NULL)
     return NULL;
-  if (!stack->_virtual_space.initialize(stack->_reserved_space, real_stack_size)) {
+  if (!stack->_virtual_space.initialize(stack->_reserved_space, real_stack_size, /* coroutine_stack */true)) {
     stack->_reserved_space.release();
     delete stack;
     return NULL;
