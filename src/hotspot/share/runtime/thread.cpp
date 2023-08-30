@@ -2100,7 +2100,7 @@ void JavaThread::oops_do_no_frames(OopClosure* f, CodeBlobClosure* cf) {
     CoroutineSupportLocker csl(this);
     Coroutine* current = _coroutine_list;
     do {
-      current->oops_do(f, cf);
+      current->oops_do_no_frames(f, cf);
       current = current->next();
     } while (current != _coroutine_list);
   }
@@ -2141,6 +2141,15 @@ void JavaThread::oops_do_frames(OopClosure* f, CodeBlobClosure* cf) {
   // Traverse the execution stack
   for (StackFrameStream fst(this, true /* update */, false /* process_frames */); !fst.is_done(); fst.next()) {
     fst.current()->oops_do(f, cf, fst.register_map());
+  }
+
+  if (EnableCoroutine) {
+    CoroutineSupportLocker csl(this);
+    Coroutine* current = _coroutine_list;
+    do {
+      current->oops_do_frames(f, cf);
+      current = current->next();
+    } while (current != _coroutine_list);
   }
 }
 

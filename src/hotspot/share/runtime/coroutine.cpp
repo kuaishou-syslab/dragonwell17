@@ -205,7 +205,7 @@ Coroutine::~Coroutine() {
   }
 }
 
-void Coroutine::frames_do(FrameClosure* fc) {
+void Coroutine::frames_do(FrameClosure* fc, bool process_frames) {
   switch (_state) {
     case Coroutine::_created:
       // the coroutine has never been run
@@ -214,7 +214,7 @@ void Coroutine::frames_do(FrameClosure* fc) {
       // the contents of this coroutine have already been visited
       break;
     case Coroutine::_onstack:
-      _stack->frames_do(fc);
+      _stack->frames_do(fc, process_frames);
       break;
     case Coroutine::_dead:
       // coroutine is dead, ignore
@@ -301,9 +301,7 @@ public:
   void frames_do(frame* fr, RegisterMap* map) { fr->oops_do(_f, _cf, map); }
 };
 
-void Coroutine::oops_do(OopClosure* f, CodeBlobClosure* cf) {
-  oops_do_Closure fc(f, cf);
-  frames_do(&fc);
+void Coroutine::oops_do_no_frames(OopClosure* f, CodeBlobClosure* cf) {
   if (_state == _onstack) {
     assert(_handle_area != NULL, "_onstack coroutine should have _handle_area");
     DEBUG_CORO_ONLY(tty->print_cr("collecting handle area %08x", _handle_area));
@@ -319,6 +317,11 @@ void Coroutine::oops_do(OopClosure* f, CodeBlobClosure* cf) {
   }
 }
 
+void Coroutine::oops_do_frames(OopClosure* f, CodeBlobClosure* cf) {
+  oops_do_Closure fc(f, cf);
+  frames_do(&fc, false);
+}
+
 class nmethods_do_Closure: public FrameClosure {
 private:
   CodeBlobClosure* _cf;
@@ -329,7 +332,7 @@ public:
 
 void Coroutine::nmethods_do(CodeBlobClosure* cf) {
   nmethods_do_Closure fc(cf);
-  frames_do(&fc);
+  frames_do(&fc, true);
 }
 
 class compiledMethods_do_Closure: public FrameClosure {
@@ -342,7 +345,7 @@ public:
 
 void Coroutine::compiledMethods_do(CodeBlobClosure* cf) {
   compiledMethods_do_Closure fc(cf);
-  frames_do(&fc);
+  frames_do(&fc, true);
 }
 
 class metadata_do_Closure: public FrameClosure {
@@ -360,7 +363,7 @@ void Coroutine::metadata_do(MetadataClosure* f) {
     }
   }
   metadata_do_Closure fc(f);
-  frames_do(&fc);
+  frames_do(&fc, true);
 }
 
 class frames_do_Closure: public FrameClosure {
@@ -373,7 +376,7 @@ public:
 
 void Coroutine::frames_do(void f(frame*, const RegisterMap* map)) {
   frames_do_Closure fc(f);
-  frames_do(&fc);
+  frames_do(&fc, true);
 }
 
 bool Coroutine::is_disposable() {
@@ -450,7 +453,7 @@ void CoroutineStack::free_stack(CoroutineStack* stack, JavaThread* thread) {
   delete stack;
 }
 
-void CoroutineStack::frames_do(FrameClosure* fc) {
+void CoroutineStack::frames_do(FrameClosure* fc, bool process_frames) {
   assert(_last_sp != NULL, "CoroutineStack with NULL last_sp");
 
   DEBUG_CORO_ONLY(tty->print_cr("frames_do stack %08x", _stack_base));
@@ -469,7 +472,7 @@ void CoroutineStack::frames_do(FrameClosure* fc) {
   }
 #endif
 
-  StackFrameStream fst(_thread, fr, true /* update */, true /* process_frames */);
+  StackFrameStream fst(_thread, fr, true /* update */, process_frames);
   fst.register_map()->set_location(get_fp_reg()->as_VMReg(), (address)_last_sp);
   fst.register_map()->set_include_argument_oops(false);
   for(; !fst.is_done(); fst.next()) {

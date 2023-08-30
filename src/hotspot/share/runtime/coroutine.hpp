@@ -138,7 +138,7 @@ private:
   // objects of this type can only be created via static functions
   Coroutine() { }
 
-  void frames_do(FrameClosure* fc);
+  void frames_do(FrameClosure* fc, bool process_frames);
 
   static void set_coroutine_base(intptr_t **&base, JavaThread* thread, jobject obj, Coroutine *coro, oop coroutineObj, address coroutine_start);
 
@@ -222,7 +222,8 @@ public:
   bool in_critical(JavaThread* thread);
 
   // GC support
-  void oops_do(OopClosure* f, CodeBlobClosure* cf);
+  void oops_do_no_frames(OopClosure* f, CodeBlobClosure* cf);
+  void oops_do_frames(OopClosure* f, CodeBlobClosure* cf);
   void nmethods_do(CodeBlobClosure* cf);
   void compiledMethods_do(CodeBlobClosure* cf);
   void metadata_do(MetadataClosure* f);
@@ -304,7 +305,7 @@ public:
   frame last_frame(Coroutine* coro, RegisterMap& map) const;
 
   // GC support
-  void frames_do(FrameClosure* fc);
+  void frames_do(FrameClosure* fc, bool process_frames);
 
   static ByteSize stack_base_offset()  {
     return byte_offset_of(CoroutineStack, _stack_overflow_state._stack_base);
